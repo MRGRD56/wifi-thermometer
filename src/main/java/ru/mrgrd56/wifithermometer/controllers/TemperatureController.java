@@ -1,6 +1,5 @@
 package ru.mrgrd56.wifithermometer.controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
@@ -20,10 +19,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 @RestController
@@ -71,7 +69,7 @@ public class TemperatureController {
 
         String json = objectMapper.writeValueAsString(
                 MapBuilder.fromEntries(LinkedHashMap::new,
-                        MapBuilder.entry("time", Instant.now().toString()),
+                        MapBuilder.entry("time", DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(ZonedDateTime.now())),
                         MapBuilder.entry("data",
                                 MapBuilder.fromEntries(LinkedHashMap::new,
                                         MapBuilder.entry("outside", MapBuilder.fromEntries(LinkedHashMap::new,
