@@ -47,6 +47,8 @@ void updateTemperature() {
     float temp = htu.readTemperature();
     float hum = htu.readHumidity();
 
+    Serial.printf("NEW_DATA temp=%.2f hum=%.2f\n", temp, hum);
+
     if (!isWifiConnected()) {
         connectToWifi();
     }
