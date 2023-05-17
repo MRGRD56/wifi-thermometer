@@ -70,14 +70,12 @@ public class TemperatureController {
         String json = objectMapper.writeValueAsString(
                 MapBuilder.fromEntries(LinkedHashMap::new,
                         MapBuilder.entry("time", DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(ZonedDateTime.now())),
-                        MapBuilder.entry("data",
-                                MapBuilder.fromEntries(LinkedHashMap::new,
-                                        MapBuilder.entry("outside", MapBuilder.fromEntries(LinkedHashMap::new,
-                                                MapBuilder.entry("temperature", temperature),
-                                                MapBuilder.entry("humidity", humidity))
-                                        )
+                        MapBuilder.entry("data", MapBuilder.fromEntries(LinkedHashMap::new,
+                                MapBuilder.entry("outside", MapBuilder.fromEntries(LinkedHashMap::new,
+                                        MapBuilder.entry("temperature", temperature),
+                                        MapBuilder.entry("humidity", humidity))
                                 )
-                        )
+                        ))
                 )
         ) + "\n";
 
