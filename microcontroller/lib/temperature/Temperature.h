@@ -8,12 +8,12 @@
 #endif //MICROCONTROLLER_TEMPERATUREDATA_H
 
 struct TemperaturePlace {
-    float* outsideTemperature;
-    float* outsideHumidity;
+    float temperature;
+    float humidity;
 
-    TemperaturePlace(float* outsideTemperature, float* outsideHumidity)
-        : outsideTemperature(outsideTemperature),
-          outsideHumidity(outsideHumidity) {}
+    TemperaturePlace(float temperature, float humidity)
+        : temperature(temperature),
+          humidity(humidity) {}
 };
 
 struct TemperatureData {
