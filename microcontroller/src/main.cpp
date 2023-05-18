@@ -3,12 +3,16 @@
 #include "Adafruit_HTU21DF.h"
 #include "ESP8266WiFi.h"
 #include "ESP8266HTTPClient.h"
+#include "ESP8266WebServer.h"
 #include "../lib/Credentials.h"
+#include "../lib/ota/Ota.h"
+#include "../lib/thermistor/Thermistor.h"
 
 const char* API_KEY = "a9b43ee71309";
 const String API_HOST = "http://192.168.0.132:8080";
 
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
+Thermistor thermistor = Thermistor(A0);
 
 bool isWifiConnected() {
     return WiFi.status() == WL_CONNECTED;
@@ -28,7 +32,8 @@ void connectToWifi() {
         delay(70);
         digitalWrite(LED_BUILTIN, LOW);
         delay(1000 - 70);
-        Serial.print(++i); Serial.print(' ');
+        Serial.print(++i);
+        Serial.print(' ');
     }
 
     Serial.println('\n');
@@ -44,10 +49,12 @@ char httpRequestBody[128];
 void updateTemperature() {
     digitalWrite(LED_BUILTIN, LOW);
 
-    float temp = htu.readTemperature();
-    float hum = htu.readHumidity();
+    float outsideTemperature = htu.readTemperature();
+    float outsideHumidity = htu.readHumidity();
+    float insideTemperature = thermistor.getTemperatureAvg();
 
-    Serial.printf("NEW_DATA temp=%.2f hum=%.2f\n", temp, hum);
+    Serial.printf("NEW_DATA outsideTemperature=%.2f outsideHumidity=%.2f insideTemperature=%.2f\n",
+                  outsideTemperature, outsideHumidity, insideTemperature);
 
     if (!isWifiConnected()) {
         connectToWifi();
@@ -60,7 +67,8 @@ void updateTemperature() {
 
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
-    snprintf(httpRequestBody, sizeof(httpRequestBody), "key=%s&temperature=%.2f&humidity=%.2f", API_KEY, temp, hum);
+    snprintf(httpRequestBody, sizeof(httpRequestBody), "key=%s&temperature=%.2f&humidity=%.2f&temp2=%.2f", API_KEY,
+             outsideTemperature, outsideHumidity, insideTemperature);
 
     http.POST(httpRequestBody);
 
@@ -70,23 +78,30 @@ void updateTemperature() {
 }
 
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
+    initializeArduinoOta();
 
-  Serial.begin(9600);
+    pinMode(LED_BUILTIN, OUTPUT);
 
-  if (!htu.begin()) {
-    Serial.println("Check circuit. HTU21D not found!");
-    while (1);
-  }
+    Serial.begin(9600);
 
-  Serial.println("Initialized");
+    thermistor.initialize();
 
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(200);
-  digitalWrite(LED_BUILTIN, HIGH);
+    if (!htu.begin()) {
+        Serial.println("Check circuit. HTU21D not found!");
+        delay(1000);
+        EspClass::restart();
+    }
+
+    Serial.println("Initialized");
+
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(200);
+    digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void loop() {
-  updateTemperature();
-  delay(3000);
+    handleArduinoOta();
+
+    updateTemperature();
+    delay(3000);
 }
