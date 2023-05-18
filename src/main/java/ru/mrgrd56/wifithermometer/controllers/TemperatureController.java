@@ -55,17 +55,18 @@ public class TemperatureController {
     public ResponseEntity<?> updateTemperature(
             @RequestParam String key,
             @RequestParam double temperature,
-            @RequestParam double humidity) throws IOException {
+            @RequestParam double humidity,
+            @RequestParam double temp2) throws IOException {
         if (!StringUtils.isBlank(authKey) && !Objects.equals(key, authKey)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         if (temperature == 0.0 && (humidity == 0.0 || humidity == -6.0)) {
-            log.warn("INVALID_DATA: temperature={}, humidity={}", temperature, humidity);
+            log.warn("INVALID_DATA: temperature={}, humidity={}, temp2={}", temperature, humidity, temp2);
             return ResponseEntity.badRequest().body("Invalid temperature or humidity");
         }
 
-        log.info("NEW_DATA: temperature={}, humidity={}", temperature, humidity);
+        log.info("NEW_DATA: temperature={}, humidity={}, temp2={}", temperature, humidity, temp2);
 
         String json = objectMapper.writeValueAsString(
                 MapBuilder.fromEntries(LinkedHashMap::new,
@@ -74,7 +75,9 @@ public class TemperatureController {
                                 MapBuilder.entry("outside", MapBuilder.fromEntries(LinkedHashMap::new,
                                         MapBuilder.entry("temperature", temperature),
                                         MapBuilder.entry("humidity", humidity))
-                                )
+                                ),
+                                MapBuilder.entry("inside", MapBuilder.fromEntries(LinkedHashMap::new,
+                                        MapBuilder.entry("temperature", temp2)))
                         ))
                 )
         ) + "\n";
