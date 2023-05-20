@@ -15,7 +15,7 @@ private:
     static constexpr double R2 = 10'000;            // 10k ohm series resistor
     static constexpr double ADC_RESOLUTION = 1023;  // 10-bit adc
 
-    static constexpr double A = 0.001129148;        // thermistor equation parameters
+    static constexpr double A = 0.001129148;        // thermistor_mg56 equation parameters
     static constexpr double B = 0.000234125;
     static constexpr double C = 0.0000000876741;
 
