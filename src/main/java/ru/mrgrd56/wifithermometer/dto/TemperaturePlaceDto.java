@@ -1,7 +1,9 @@
 package ru.mrgrd56.wifithermometer.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TemperaturePlaceDto {
     private Float temperature;
     private Float humidity;

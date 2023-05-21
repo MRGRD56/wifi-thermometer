@@ -1,11 +1,13 @@
 package ru.mrgrd56.wifithermometer.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
 public class EcoModeDto {
     private Boolean isEco;
 
-    public Boolean isEco() {
+    @JsonProperty("isEco")
+    public Boolean getEco() {
         return isEco;
     }
 

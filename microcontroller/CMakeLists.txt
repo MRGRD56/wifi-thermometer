@@ -30,4 +30,4 @@ add_custom_target(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-add_executable(Z_DUMMY_TARGET ${SRC_LIST} lib/Credentials.h lib/ota/Ota.cpp lib/ota/Ota.h lib/temperature/Temperature.h lib/thermistor_mg56/Thermistor.cpp lib/thermistor_mg56/Thermistor.h lib/thermistor_xreef/Thermistor.cpp lib/thermistor_xreef/Thermistor.h)
+add_executable(Z_DUMMY_TARGET ${SRC_LIST} lib/Credentials.h lib/ota/Ota.cpp lib/ota/Ota.h lib/temperature/Temperature.h lib/thermistor_mg56/Thermistor.cpp lib/thermistor_mg56/Thermistor.h lib/thermistor_xreef/Thermistor.cpp lib/thermistor_xreef/Thermistor.h lib/presence/PresenceSensor.cpp lib/presence/PresenceSensor.h)

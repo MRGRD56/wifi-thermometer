@@ -5,6 +5,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import ru.mrgrd56.wifithermometer.dto.EcoModeDto;
+import ru.mrgrd56.wifithermometer.dto.PresenceDto;
 import ru.mrgrd56.wifithermometer.dto.TemperatureDataDto;
 
 import java.time.Duration;
@@ -27,6 +28,10 @@ public class MicrocontrollerApiService {
 
     public EcoModeDto setEcoMode(boolean isEco) {
         return restTemplate().postForObject("/eco?isEco=" + isEco, null, EcoModeDto.class);
+    }
+
+    public PresenceDto getPresence() {
+        return restTemplate().getForObject("/presence", PresenceDto.class);
     }
 
     private RestTemplate restTemplate() {

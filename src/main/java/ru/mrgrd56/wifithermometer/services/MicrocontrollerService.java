@@ -3,7 +3,9 @@ package ru.mrgrd56.wifithermometer.services;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import ru.mrgrd56.wifithermometer.dto.EcoModeDto;
+import ru.mrgrd56.wifithermometer.dto.PresenceDto;
 import ru.mrgrd56.wifithermometer.dto.TemperatureDataDto;
 
 import java.util.function.Predicate;
@@ -20,19 +22,30 @@ public class MicrocontrollerService {
     }
 
     public TemperatureDataDto getTemperature() {
-        return tryRequest(microcontrollerApiService::getTemperature, this::validateTemperatureData);
+        return tryRequest("getTemperature", microcontrollerApiService::getTemperature, this::validateTemperatureData);
     }
 
     public EcoModeDto getEcoMode() {
-        return tryRequest(microcontrollerApiService::getEcoMode, this::validateEcoMode);
+        return tryRequest("getEcoMode", microcontrollerApiService::getEcoMode, this::validateEcoMode);
     }
 
     public EcoModeDto setEcoMode(boolean isEcoMode) {
-        return tryRequest(() -> microcontrollerApiService.setEcoMode(isEcoMode), this::validateEcoMode);
+        return tryRequest("setEcoMode", () -> microcontrollerApiService.setEcoMode(isEcoMode), this::validateEcoMode);
     }
 
-    private <T> T tryRequest(Supplier<T> requestData, Predicate<T> validateData) {
-        return tryRequest(5, requestData, validateData);
+    public PresenceDto getPresence() {
+        return tryRequest("getPresence", microcontrollerApiService::getPresence, this::validatePresence);
+    }
+
+    private <T> T tryRequest(String name, Supplier<T> requestData, Predicate<T> validateData) {
+        try {
+            T result = tryRequest(5, requestData, validateData);
+            log.info("{} -> {}", name, result);
+            return result;
+        } catch (Exception e) {
+            log.error("{} -> error", name);
+            throw e;
+        }
     }
 
     private <T> T tryRequest(int attempts, Supplier<T> requestData, Predicate<T> validateData) {
@@ -40,6 +53,8 @@ public class MicrocontrollerService {
         Exception exception = null;
         try {
             data = requestData.get();
+        } catch (HttpClientErrorException e) {
+            throw e;
         } catch (Exception e) {
             data = null;
             exception = e;
@@ -72,7 +87,11 @@ public class MicrocontrollerService {
     }
 
     private boolean validateEcoMode(EcoModeDto ecoMode) {
-        return ecoMode != null && ecoMode.isEco() != null;
+        return ecoMode != null && ecoMode.getEco() != null;
+    }
+
+    private boolean validatePresence(PresenceDto presence) {
+        return presence != null && presence.getPresent() != null;
     }
 
     private boolean validateTemperatureData(TemperatureDataDto data) {

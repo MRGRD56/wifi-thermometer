@@ -1,9 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "Adafruit_HTU21DF.h"
-#include "ESP8266WiFi.h"
-#include "ESP8266HTTPClient.h"
-#include "ESP8266WebServer.h"
 #include <U8g2lib.h>
 #include <EEPROM.h>
 #include "../lib/Credentials.h"
@@ -12,8 +9,22 @@
 #include "../lib/temperature/Temperature.h"
 #include "../lib/button/Button.h"
 
+#ifdef ESP8266
+#include "ESP8266WiFi.h"
+#include "ESP8266HTTPClient.h"
+#include "ESP8266WebServer.h"
+#include "../lib/presence/PresenceSensor.h"
+
+#else
+#include "WiFi.h"
+#include "HTTPClient.h"
+#include "WebServer.h"
+#endif
+
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
+
+const unsigned long PRESENCE_MIN_DURATION = (8 * 60 * 1000);
 
 const String API_KEY = "a9b43ee71309";
 const String API_HOST = "http://192.168.0.132:8080";
@@ -27,8 +38,10 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 Thermistor thermistor = Thermistor(A0, false);
 Button button = Button(D6);
+PresenceSensor presenceSensor = PresenceSensor(D5);
 
 unsigned long lastDataUpdate = 0;
+bool lastPresent = true;
 
 bool isEcoMode;
 
@@ -71,6 +84,11 @@ void displayText(const char *format...) {
     } while (u8g2.nextPage());
 }
 
+void displayEcoIntro() {
+    displayText("ECO mode");
+    delay(500);
+}
+
 void setEcoMode(bool newEcoMode) {
     isEcoMode = newEcoMode;
         
@@ -100,10 +118,7 @@ void connectToWifi() {
 
     int i = 0;
     while (!isWifiConnected()) {
-        setLedLight(false);
-        delay(70);
-        setLedLight(true);
-        delay(1000 - 70);
+        delay(1000);
 
         i++;
 
@@ -136,13 +151,11 @@ void connectToWifi() {
 }
 
 TemperatureData getTemperature() {
-    setLedLight(true);
-
     float outsideTemperature = htu.readTemperature();
     float outsideHumidity = htu.readHumidity();
     float insideTemperature = thermistor.readTemperature();
 
-    TemperatureData result = {
+    return {
         {
             outsideTemperature,
             outsideHumidity
@@ -152,10 +165,6 @@ TemperatureData getTemperature() {
             -1
         }
     };
-
-    setLedLight(false);
-
-    return result;
 }
 
 auto authorized(void (*handler)()) {
@@ -228,6 +237,25 @@ void handlePostEco() {
     Serial.println(getEcoResponseBody);
 }
 
+char getPresenceBody[64];
+
+void handleGetPresence() {
+    bool* isPresentCurrentlyPtr = new bool;
+    bool isPresent = presenceSensor.isPresentLong(PRESENCE_MIN_DURATION, isPresentCurrentlyPtr);
+
+    snprintf(getPresenceBody, sizeof(getPresenceBody),
+             R"({"isPresent":%s,"isPresentNow":%s})",
+             isPresent ? "true" : "false",
+             *isPresentCurrentlyPtr ? "true" : "false");
+
+    delete isPresentCurrentlyPtr;
+
+    server.send(200, "application/json", getPresenceBody);
+
+    Serial.print("GET /presence: 200 OK - ");
+    Serial.println(getPresenceBody);
+}
+
 //char httpRequestBody[128];
 
 //void updateTemperature() {
@@ -275,14 +303,14 @@ void initializeServer() {
     server.on("/temperature", HTTP_GET, authorized(handleGetTemperature));
     server.on("/eco", HTTP_GET, authorized(handleGetEco));
     server.on("/eco", HTTP_POST, authorized(handlePostEco));
+    server.on("/presence", HTTP_GET, authorized(handleGetPresence));
     server.enableCORS(true);
     server.begin();
 }
 
 void displayInitialData() {
     if (isEcoMode) {
-        displayText("ECO mode");
-        delay(500);
+        displayEcoIntro();
         clearDisplay();
     } else {
         displayData(getTemperature());
@@ -298,6 +326,9 @@ void setup() {
     u8g2.begin();
 
     pinMode(LED_BUILTIN, OUTPUT);
+
+    presenceSensor.initialize();
+    presenceSensor.setPresent(true);
 
     Serial.begin(9600);
 
@@ -330,7 +361,19 @@ void setup() {
 
 void loop() {
     if (button.isPressed()) {
-        setEcoMode(!isEcoMode);
+        presenceSensor.setPresent(true);
+
+        if (isEcoMode || lastPresent) {
+            bool newEcoMode = !isEcoMode;
+
+            if (newEcoMode) {
+                displayEcoIntro();
+            }
+
+            setEcoMode(newEcoMode);
+        } else {
+            lastDataUpdate = 0;
+        }
     }
 
     handleArduinoOta();
@@ -341,7 +384,22 @@ void loop() {
     if (!isEcoMode) {
         if (lastDataUpdate < now - 1000) {
             lastDataUpdate = now;
-            displayData(getTemperature());
+
+            bool previousPresent = lastPresent;
+            bool isPresent = presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);
+            lastPresent = isPresent;
+
+            if (isPresent) {
+                displayData(getTemperature());
+            } else if (previousPresent) {
+                clearDisplay();
+            }
         }
+    }
+
+    Serial.printf("isPresent %s\n", digitalRead(presenceSensor.pin) ? "true" : "false");
+
+    if (presenceSensor.getLastUpdate() < now - 7'000) {
+        presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);
     }
 }
