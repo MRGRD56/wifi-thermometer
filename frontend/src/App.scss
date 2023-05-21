@@ -1,0 +1,51 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.app {
+    display: flex;
+    justify-content: space-around;
+    padding: 50px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    border-radius: 15px;
+    background: white;
+    width: 70%;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid #ddd;
+    border-radius: 15px;
+    padding: 20px;
+    background: #f7f7f7;
+    flex: 1;
+    margin: 0 10px;
+
+    h2 {
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    .temperature,
+    .humidity {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+
+    .time {
+        font-size: 10px;
+        color: #999;
+        margin-top: 20px;
+    }
+}
