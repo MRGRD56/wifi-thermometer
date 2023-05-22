@@ -30,6 +30,7 @@
 
 #ifdef DISPLAY_LCD
 #include "LiquidCrystal_I2C.h"
+#include "../lib/lcd/LcdCustomCharacters.h"
 #endif
 
 #define EEPROM_SIZE 1
@@ -57,9 +58,17 @@ Button button = Button(D6);
 PresenceSensor presenceSensor = PresenceSensor(D5);
 
 unsigned long lastDataUpdate = 0;
+unsigned long dataUpdateDelay;
 bool lastPresent = true;
 
 bool isEcoMode;
+
+bool isScreenEnabled;
+
+bool isDebugMode = false;
+byte debugPageIndex = 0;
+const byte debugPagesCount = 2;
+unsigned long lastDebugUpdate = 0;
 
 void setLedLight(boolean isEnabled) {
     if (isEnabled) {
@@ -70,6 +79,8 @@ void setLedLight(boolean isEnabled) {
 }
 
 void initDisplay() {
+    isScreenEnabled = true;
+
 #ifdef DISPLAY_OLED
     u8g2.begin();
 #endif
@@ -77,10 +88,18 @@ void initDisplay() {
 #ifdef DISPLAY_LCD
     lcd.init();
     lcd.backlight();
+
+    lcd.createChar(LCD_CHAR_CELSIUS_DEGREES, LCD_CHAR_CELSIUS_DEGREES_BYTES);
+    lcd.createChar(LCD_CHAR_INSIDE, LCD_CHAR_INSIDE_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE, LCD_CHAR_OUTSIDE_BYTES);
 #endif
 }
 
 void disableDisplay() {
+    if (!isScreenEnabled) {
+        return;
+    }
+
 #ifdef DISPLAY_OLED
     u8g2.clearDisplay();
 #endif
@@ -89,6 +108,8 @@ void disableDisplay() {
     lcd.noBacklight();
     lcd.noDisplay();
 #endif
+
+    isScreenEnabled = false;
 }
 
 void displayData(TemperatureData data) {
@@ -112,32 +133,57 @@ void displayData(TemperatureData data) {
 
 #ifdef DISPLAY_LCD
     lcd.clear();
-    lcd.backlight();
-    lcd.display();
+    if (!isScreenEnabled) {
+        lcd.backlight();
+        lcd.display();
+    }
     lcd.setCursor(0, 0);
-    lcd.printf("O T %.2f H %.2f", data.outside.temperature, data.outside.humidity);
+    lcd.write(LCD_CHAR_OUTSIDE);
+    lcd.printf("%.2f", data.outside.temperature);
+    lcd.write(LCD_CHAR_CELSIUS_DEGREES);
+    lcd.printf(" %.1f%%", data.outside.humidity);
+
     lcd.setCursor(0, 1);
-    lcd.printf("I T %.2f", data.inside.temperature);
+    lcd.write(LCD_CHAR_INSIDE);
+    lcd.printf("%.2f", data.inside.temperature);
+    lcd.write(LCD_CHAR_CELSIUS_DEGREES);
 #endif
+
+    isScreenEnabled = true;
 }
 
-void displayText(const char *format...) {
+void displayText(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    int bufferSize = vsnprintf(nullptr, 0, format, args) + 1;
+    char* buffer = new char[bufferSize];
+
+    vsnprintf(buffer, bufferSize, format, args);
+
 #ifdef DISPLAY_OLED
     u8g2.firstPage();
     do {
         u8g2.setFont(u8g2_font_10x20_t_cyrillic);
         u8g2.setCursor(0, 38);
-        u8g2.printf(format);
+        u8g2.printf("%s", buffer);
     } while (u8g2.nextPage());
 #endif
 
 #ifdef DISPLAY_LCD
     lcd.clear();
-    lcd.backlight();
-    lcd.display();
+    if (!isScreenEnabled) {
+        lcd.backlight();
+        lcd.display();
+    }
     lcd.setCursor(0, 0);
-    lcd.printf(format);
+    lcd.printf("%s", buffer);
 #endif
+
+    delete[] buffer;
+    va_end(args);
+
+    isScreenEnabled = true;
 }
 
 void displayEcoIntro() {
@@ -373,6 +419,29 @@ void displayInitialData() {
     }
 }
 
+void setDebugPage(byte page) {
+    debugPageIndex = page % debugPagesCount;
+    lastDebugUpdate = 0;
+    if (debugPageIndex == 1) {
+        dataUpdateDelay = 300;
+    } else {
+        dataUpdateDelay = 5000;
+    }
+}
+
+void displayDebugPage() {
+    switch (debugPageIndex) {
+        case 0:
+            displayText(WiFi.localIP().toString().c_str());
+            break;
+        case 1:
+            displayText("Pres: %s", presenceSensor.isPresentNow() ? "Y" : "N");
+            break;
+        default:
+            break;
+    }
+}
+
 void setup() {
     initializeArduinoOta();
 
@@ -416,19 +485,40 @@ void setup() {
 }
 
 void loop() {
-    if (button.isPressed()) {
+    unsigned long buttonPressMillis;
+    if (button.isPressed(buttonPressMillis, 1500)) {
         presenceSensor.setPresent(true);
 
-        if (isEcoMode || lastPresent) {
-            bool newEcoMode = !isEcoMode;
+        if (buttonPressMillis >= 1500) {
+            if (!isEcoMode || isDebugMode) {
+                isDebugMode = !isDebugMode;
 
-            if (newEcoMode) {
-                displayEcoIntro();
+                if (isDebugMode) {
+                    displayText("Debug ON");
+                    delay(500);
+                    setDebugPage(0);
+                } else {
+                    displayText("Debug OFF");
+                    delay(500);
+                    lastDataUpdate = 0;
+                }
             }
+        } else if (buttonPressMillis >= 80) {
+            if (isDebugMode) {
+                setDebugPage(debugPageIndex + 1);
+            } else {
+                if (isEcoMode || lastPresent) {
+                    bool newEcoMode = !isEcoMode;
 
-            setEcoMode(newEcoMode);
-        } else {
-            lastDataUpdate = 0;
+                    if (newEcoMode) {
+                        displayEcoIntro();
+                    }
+
+                    setEcoMode(newEcoMode);
+                } else {
+                    lastDataUpdate = 0;
+                }
+            }
         }
     }
 
@@ -437,23 +527,29 @@ void loop() {
 
     unsigned long now = millis();
 
-    if (!isEcoMode) {
-        if (lastDataUpdate < now - 3000) {
-            lastDataUpdate = now;
+    if (isDebugMode) {
+        if (lastDebugUpdate < now - dataUpdateDelay) {
+            lastDebugUpdate = now;
 
-            bool previousPresent = lastPresent;
-            bool isPresent = presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);
-            lastPresent = isPresent;
+            displayDebugPage();
+        }
+    } else {
+        if (!isEcoMode) {
+            if (lastDataUpdate < now - 3000) {
+                lastDataUpdate = now;
 
-            if (isPresent) {
-                displayData(getTemperature());
-            } else if (previousPresent) {
-                disableDisplay();
+                bool previousPresent = lastPresent;
+                bool isPresent = presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);
+                lastPresent = isPresent;
+
+                if (isPresent) {
+                    displayData(getTemperature());
+                } else if (previousPresent) {
+                    disableDisplay();
+                }
             }
         }
     }
-
-    Serial.printf("isPresent %s\n", digitalRead(presenceSensor.pin) ? "true" : "false");
 
     if (presenceSensor.getLastUpdate() < now - 7'000) {
         presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);

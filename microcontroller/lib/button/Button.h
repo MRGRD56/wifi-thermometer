@@ -6,22 +6,53 @@
 #include <Arduino.h>
 
 struct Button {
-  byte pin;
-  byte state = HIGH;
-  byte previousState = HIGH;
-  byte lastState = HIGH;
+public:
+    const byte pin;
 
-  explicit Button(byte pin) : pin(pin) {}
+    explicit Button(byte pin) : pin(pin) {}
 
-  void initialize() {
-    pinMode(pin, INPUT_PULLUP);
-  }
+    void initialize() const {
+        pinMode(pin, INPUT_PULLUP);
+    }
 
-  bool isPressed() {
-    state = digitalRead(pin);
-    previousState = lastState;
-    lastState = state;
+    bool isPressed(unsigned long& millisPressed, unsigned long maxPressTime = -1) {
+        state = digitalRead(pin);
+        previousState = lastState;
+        lastState = state;
 
-    return previousState == LOW && state == HIGH;
-  }
+        unsigned long now = millis();
+
+        if (previousState == HIGH && state == LOW) { // just pressed
+            pressStart = now;
+            return false;
+        }
+
+        if (previousState == LOW && state == HIGH) { // just released
+            if (isAlreadyPressed) {
+                isAlreadyPressed = false;
+                return false;
+            }
+
+            millisPressed = now - pressStart;
+            return true;
+        }
+
+        if (state == LOW && maxPressTime != -1 && !isAlreadyPressed) {
+            unsigned long currentMillisPressed = now - pressStart;
+            if (currentMillisPressed >= maxPressTime) {
+                isAlreadyPressed = true;
+                millisPressed = currentMillisPressed;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+private:
+    byte state = HIGH;
+    byte previousState = HIGH;
+    byte lastState = HIGH;
+    unsigned long pressStart = 0;
+    bool isAlreadyPressed = false;
 };
