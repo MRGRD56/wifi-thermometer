@@ -139,13 +139,13 @@ void displayData(TemperatureData data) {
     }
     lcd.setCursor(0, 0);
     lcd.write(LCD_CHAR_OUTSIDE);
-    lcd.printf("%.2f", data.outside.temperature);
+    lcd.printf(" %.2f", data.outside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
     lcd.printf(" %.1f%%", data.outside.humidity);
 
     lcd.setCursor(0, 1);
     lcd.write(LCD_CHAR_INSIDE);
-    lcd.printf("%.2f", data.inside.temperature);
+    lcd.printf(" %.2f", data.inside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
 #endif
 

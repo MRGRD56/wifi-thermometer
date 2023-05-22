@@ -41,10 +41,10 @@ const byte LCD_CHAR_OUTSIDE = 1;
 const char LCD_CHAR_OUTSIDE_BYTES[] = {
         B00000,
         B00000,
-        B11100,
-        B10100,
-        B10100,
-        B11100,
+        B01110,
+        B01010,
+        B01010,
+        B01110,
         B00000,
         B00000
 };
@@ -53,10 +53,10 @@ const byte LCD_CHAR_INSIDE = 2;
 const char LCD_CHAR_INSIDE_BYTES[] = {
         B00000,
         B00000,
-        B11100,
-        B01000,
-        B01000,
-        B11100,
+        B01110,
+        B00100,
+        B00100,
+        B01110,
         B00000,
         B00000
 };
