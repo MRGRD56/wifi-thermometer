@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "Adafruit_HTU21DF.h"
-#include <U8g2lib.h>
 #include <EEPROM.h>
+
 #include "../lib/Credentials.h"
 #include "../lib/ota/Ota.h"
 #include "../lib/thermistor_xreef/Thermistor.h"
@@ -21,6 +21,17 @@
 #include "WebServer.h"
 #endif
 
+#define DISPLAY_LCD
+//#define DISPLAY_OLED
+
+#ifdef DISPLAY_OLED
+#include <U8g2lib.h>
+#endif
+
+#ifdef DISPLAY_LCD
+#include "LiquidCrystal_I2C.h"
+#endif
+
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
@@ -34,7 +45,12 @@ const size_t COLLECTED_HEADERS_SIZE = sizeof(COLLECTED_HEADERS) / sizeof(char*);
 
 ESP8266WebServer server = ESP8266WebServer(80);
 
+#ifdef DISPLAY_OLED
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R2, U8X8_PIN_NONE, SCL, SDA);
+#endif
+#ifdef DISPLAY_LCD
+LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
+#endif
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 Thermistor thermistor = Thermistor(A0, false);
 Button button = Button(D6);
@@ -53,16 +69,35 @@ void setLedLight(boolean isEnabled) {
     }
 }
 
-void clearDisplay() {
+void initDisplay() {
+#ifdef DISPLAY_OLED
+    u8g2.begin();
+#endif
+
+#ifdef DISPLAY_LCD
+    lcd.init();
+    lcd.backlight();
+#endif
+}
+
+void disableDisplay() {
+#ifdef DISPLAY_OLED
     u8g2.clearDisplay();
+#endif
+
+#ifdef DISPLAY_LCD
+    lcd.noBacklight();
+    lcd.noDisplay();
+#endif
 }
 
 void displayData(TemperatureData data) {
     if (isEcoMode) {
-        clearDisplay();
+        disableDisplay();
         return;
     }
 
+#ifdef DISPLAY_OLED
     u8g2.firstPage();
     do {
         u8g2.setFont(u8g2_font_10x20_t_cyrillic);
@@ -73,15 +108,36 @@ void displayData(TemperatureData data) {
         u8g2.setCursor(0, 60);
         u8g2.printf("Ti: %.2f *C", data.inside.temperature);
     } while (u8g2.nextPage());
+#endif
+
+#ifdef DISPLAY_LCD
+    lcd.clear();
+    lcd.backlight();
+    lcd.display();
+    lcd.setCursor(0, 0);
+    lcd.printf("O T %.2f H %.2f", data.outside.temperature, data.outside.humidity);
+    lcd.setCursor(0, 1);
+    lcd.printf("I T %.2f", data.inside.temperature);
+#endif
 }
 
 void displayText(const char *format...) {
+#ifdef DISPLAY_OLED
     u8g2.firstPage();
     do {
         u8g2.setFont(u8g2_font_10x20_t_cyrillic);
         u8g2.setCursor(0, 38);
         u8g2.printf(format);
     } while (u8g2.nextPage());
+#endif
+
+#ifdef DISPLAY_LCD
+    lcd.clear();
+    lcd.backlight();
+    lcd.display();
+    lcd.setCursor(0, 0);
+    lcd.printf(format);
+#endif
 }
 
 void displayEcoIntro() {
@@ -96,7 +152,7 @@ void setEcoMode(bool newEcoMode) {
     EEPROM.commit();
 
     if (isEcoMode) {
-        clearDisplay();
+        disableDisplay();
     } else {
         lastDataUpdate = 0;
     }
@@ -311,7 +367,7 @@ void initializeServer() {
 void displayInitialData() {
     if (isEcoMode) {
         displayEcoIntro();
-        clearDisplay();
+        disableDisplay();
     } else {
         displayData(getTemperature());
     }
@@ -323,7 +379,7 @@ void setup() {
     EEPROM.begin(EEPROM_SIZE);
     isEcoMode = EEPROM.read(EEPROM_ADDR_IS_DATA_SHOWN);
 
-    u8g2.begin();
+    initDisplay();
 
     pinMode(LED_BUILTIN, OUTPUT);
 
@@ -382,7 +438,7 @@ void loop() {
     unsigned long now = millis();
 
     if (!isEcoMode) {
-        if (lastDataUpdate < now - 1000) {
+        if (lastDataUpdate < now - 3000) {
             lastDataUpdate = now;
 
             bool previousPresent = lastPresent;
@@ -392,7 +448,7 @@ void loop() {
             if (isPresent) {
                 displayData(getTemperature());
             } else if (previousPresent) {
-                clearDisplay();
+                disableDisplay();
             }
         }
     }
