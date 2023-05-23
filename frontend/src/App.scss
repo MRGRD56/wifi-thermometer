@@ -1,6 +1,5 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #f0f0f0;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -8,16 +7,25 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+
+    background: url(./assets/background.svg) center 120% / auto no-repeat,
+                linear-gradient(rgb(249, 255, 255) 0%, rgb(56, 200, 230) 100%);
 }
 
 .app {
     display: flex;
-    justify-content: space-around;
+    align-items: center;
+    flex-direction: column;
     padding: 50px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     border-radius: 15px;
     background: white;
-    width: 70%;
+    gap: 18px;
+}
+
+.temperatures {
+    display: flex;
+    justify-content: space-around;
 }
 
 .card {

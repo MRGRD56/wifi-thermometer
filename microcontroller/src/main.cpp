@@ -36,7 +36,7 @@
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
-const unsigned long PRESENCE_MIN_DURATION = (8 * 60 * 1000);
+const unsigned long PRESENCE_MIN_DURATION = (5 * 60 * 1000);
 
 const String API_KEY = "a9b43ee71309";
 const String API_HOST = "http://192.168.0.132:8080";
@@ -132,7 +132,6 @@ void displayData(TemperatureData data) {
 #endif
 
 #ifdef DISPLAY_LCD
-    lcd.clear();
     if (!isScreenEnabled) {
         lcd.backlight();
         lcd.display();
@@ -141,12 +140,13 @@ void displayData(TemperatureData data) {
     lcd.write(LCD_CHAR_OUTSIDE);
     lcd.printf(" %.2f", data.outside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
-    lcd.printf(" %.1f%%", data.outside.humidity);
+    lcd.printf(" %.1f%%   ", data.outside.humidity);
 
     lcd.setCursor(0, 1);
     lcd.write(LCD_CHAR_INSIDE);
     lcd.printf(" %.2f", data.inside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
+    lcd.print("         ");
 #endif
 
     isScreenEnabled = true;

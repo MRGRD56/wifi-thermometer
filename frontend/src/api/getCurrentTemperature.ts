@@ -1,9 +1,8 @@
 import axios from 'axios'
 import {TemperatureSnapshot} from "../types/api.ts";
+import {API_HOST} from "../constants.ts";
 
-const API_HOST = import.meta.env.VITE_API_HOST;
-
-const getCurrentTemperature = async () => {
+const getCurrentTemperature = async (): Promise<TemperatureSnapshot> => {
     const response = await axios.get<TemperatureSnapshot>(`${API_HOST}/temperature/current`);
     return response.data;
 }

@@ -9,6 +9,15 @@ export interface TemperaturePlace {
 }
 
 export interface TemperatureData {
-    temperature: number;
+    temperature?: number;
     humidity?: number;
+}
+
+export interface EcoMode {
+    isEco: boolean;
+}
+
+export interface Presence {
+    isPresent: boolean;
+    isPresentNow: boolean;
 }
