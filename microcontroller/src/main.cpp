@@ -36,7 +36,7 @@
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
-const unsigned long PRESENCE_MIN_DURATION = (5 * 60 * 1000);
+const unsigned long PRESENCE_MIN_DURATION = (3 * 60 * 1000);
 
 const String API_KEY = "a9b43ee71309";
 const String API_HOST = "http://192.168.0.132:8080";
@@ -168,7 +168,7 @@ void displayText(const char *format, ...) {
     do {
         u8g2.setFont(u8g2_font_10x20_t_cyrillic);
         u8g2.setCursor(0, 38);
-        u8g2.printf("%s", buffer);
+        u8g2.print(buffer);
     } while (u8g2.nextPage());
 #endif
 
@@ -524,7 +524,7 @@ void loop() {
                 delay(500);
                 lastDataUpdate = 0;
             }
-        } else if (buttonPressMillis >= 80) {
+        } else if (buttonPressMillis >= 25) {
             if (isDebugMode) {
                 setDebugPage(debugPageIndex + 1);
             } else {
@@ -556,7 +556,7 @@ void loop() {
         }
     } else {
         if (!isEcoMode) {
-            if (lastDataUpdate < now - 3000) {
+            if (lastDataUpdate < now - (lastPresent ? 3000 : 500)) {
                 lastDataUpdate = now;
 
                 bool previousPresent = lastPresent;
