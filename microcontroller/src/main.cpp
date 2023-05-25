@@ -179,11 +179,29 @@ void displayText(const char *format, ...) {
         lcd.display();
     }
     lcd.setCursor(0, 0);
-    lcd.printf("%s", buffer);
+    lcd.print(buffer);
 #endif
 
     delete[] buffer;
     va_end(args);
+
+    isScreenEnabled = true;
+}
+
+void displayText2(const String line1, const String line2) {
+#ifdef DISPLAY_LCD
+    lcd.clear();
+    if (!isScreenEnabled) {
+        lcd.backlight();
+        lcd.display();
+    }
+    lcd.setCursor(0, 0);
+    lcd.print(line1);
+    if (!line2.isEmpty()) {
+        lcd.setCursor(0, 1);
+        lcd.print(line2);
+    }
+#endif
 
     isScreenEnabled = true;
 }
@@ -445,7 +463,10 @@ void displayDebugPage() {
 }
 
 void setup() {
-    initializeArduinoOta();
+    initializeArduinoOta([](const String line1, const String line2) {
+        Serial.println(line1);
+        Serial.println(line2);
+    });
 
     EEPROM.begin(EEPROM_SIZE);
     isEcoMode = EEPROM.read(EEPROM_ADDR_IS_DATA_SHOWN);
@@ -491,19 +512,17 @@ void loop() {
     if (button.isPressed(buttonPressMillis, 1500)) {
         presenceSensor.setPresent(true);
 
-        if (buttonPressMillis >= 1500) {
-            if (!isEcoMode || isDebugMode) {
-                isDebugMode = !isDebugMode;
+        if (!isEcoMode && buttonPressMillis >= 1500) {
+            isDebugMode = !isDebugMode;
 
-                if (isDebugMode) {
-                    displayText("Debug ON");
-                    delay(500);
-                    setDebugPage(0);
-                } else {
-                    displayText("Debug OFF");
-                    delay(500);
-                    lastDataUpdate = 0;
-                }
+            if (isDebugMode) {
+                displayText("Debug ON");
+                delay(500);
+                setDebugPage(0);
+            } else {
+                displayText("Debug OFF");
+                delay(500);
+                lastDataUpdate = 0;
             }
         } else if (buttonPressMillis >= 80) {
             if (isDebugMode) {

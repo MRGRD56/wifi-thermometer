@@ -7,6 +7,8 @@
 
 #endif //MICROCONTROLLER_OTA_H
 
-void initializeArduinoOta();
+#include <Arduino.h>
+
+void initializeArduinoOta(void (*showMessage)(const String line1, const String line2));
 
 void handleArduinoOta();
