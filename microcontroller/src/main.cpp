@@ -2,10 +2,11 @@
 #include <Wire.h>
 #include "Adafruit_HTU21DF.h"
 #include <EEPROM.h>
+#include "OneWire.h"
+#include "DallasTemperature.h"
 
 #include "../lib/Credentials.h"
 #include "../lib/ota/Ota.h"
-#include "../lib/thermistor_xreef/Thermistor.h"
 #include "../lib/temperature/Temperature.h"
 #include "../lib/button/Button.h"
 
@@ -39,7 +40,6 @@
 const unsigned long PRESENCE_MIN_DURATION = (3 * 60 * 1000);
 
 const String API_KEY = "a9b43ee71309";
-const String API_HOST = "http://192.168.0.132:8080";
 
 const char* COLLECTED_HEADERS[] = {"X-Api-Key"};
 const size_t COLLECTED_HEADERS_SIZE = sizeof(COLLECTED_HEADERS) / sizeof(char*);
@@ -53,13 +53,18 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 #endif
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
-Thermistor thermistor = Thermistor(A0, false);
 Button button = Button(D6);
 PresenceSensor presenceSensor = PresenceSensor(D5);
+
+OneWire insideThermometerWire = OneWire(D7);
+DallasTemperature insideThermometer = DallasTemperature(&insideThermometerWire);
 
 unsigned long lastDataUpdate = 0;
 unsigned long dataUpdateDelay;
 bool lastPresent = true;
+
+unsigned long lastInsideTemperatureRequest = 0;
+float lastInsideTemperature = -1;
 
 bool isEcoMode;
 
@@ -254,10 +259,19 @@ void connectToWifi() {
     setLedLight(false);
 }
 
+void requestInsideTemperature(unsigned long now = millis()) {
+    lastInsideTemperatureRequest = now;
+    insideThermometer.requestTemperatures();
+}
+
+float getRequestedInsideTemperature() {
+    return insideThermometer.getTempCByIndex(0);
+}
+
 TemperatureData getTemperature() {
     float outsideTemperature = htu.readTemperature();
     float outsideHumidity = htu.readHumidity();
-    float insideTemperature = thermistor.readTemperature();
+    float insideTemperature = lastInsideTemperature;
 
     return {
         {
@@ -360,47 +374,6 @@ void handleGetPresence() {
     Serial.println(getPresenceBody);
 }
 
-//char httpRequestBody[128];
-
-//void updateTemperature() {
-//    setLedLight(true);
-//
-//    float temperature = htu.readTemperature();
-//    float humidity = htu.readHumidity();
-//    float insideTemperature = thermistor_mg56.getTemperatureAvg();
-//
-//    Serial.printf("NEW_DATA temperature=%.2f humidity=%.2f insideTemperature=%.2f\n",
-//                  temperature, humidity, insideTemperature);
-//
-//    if (!isWifiConnected()) {
-//        connectToWifi();
-//    }
-//
-//    WiFiClient client;
-//    HTTPClient http;
-//
-//    http.begin(client, API_HOST + "/temperature");
-//
-//    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-//
-//    snprintf(httpRequestBody, sizeof(httpRequestBody), "key=%s&temperature=%.2f&humidity=%.2f&temp2=%.2f", API_KEY,
-//             temperature, humidity, insideTemperature);
-//
-//    http.POST(httpRequestBody);
-//
-//    http.end();
-//
-//    setLedLight(false);
-//}
-
-void initializeThermistor() {
-    thermistor.setSeriesResistor(10'000);
-    thermistor.setThermistorNominalResistance(10'000); // If nothing passed set to default 10000
-    thermistor.setBCoefficent(3950); // If nothing passed set to default 3950
-    thermistor.setTemperatureNominal(25);
-    thermistor.setVccToThermisor(true); // default Vcc to thermistor
-}
-
 void initializeServer() {
     server.collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
 
@@ -459,7 +432,8 @@ void setup() {
 
     Serial.begin(9600);
 
-    initializeThermistor();
+    insideThermometer.begin();
+
     button.initialize();
 
     if (!htu.begin()) {
@@ -473,17 +447,13 @@ void setup() {
 
     initializeServer();
 
-    Serial.println("Initialized");
-
-    setLedLight(true);
-    delay(120);
-    setLedLight(false);
-    delay(80);
-    setLedLight(true);
-    delay(120);
-    setLedLight(false);
-
+    requestInsideTemperature();
+    lastInsideTemperature = getRequestedInsideTemperature();
     displayInitialData();
+    insideThermometer.setWaitForConversion(false);
+
+    Serial.println("Initialized");
+    setLedLight(false);
 }
 
 void loop() {
@@ -549,6 +519,11 @@ void loop() {
                 }
             }
         }
+    }
+
+    if (lastInsideTemperatureRequest < now - (isEcoMode ? 1500 : 750)) {
+        lastInsideTemperature = getRequestedInsideTemperature();
+        requestInsideTemperature(now);
     }
 
     if (presenceSensor.getLastUpdate() < now - 7'000) {

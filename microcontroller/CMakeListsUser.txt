@@ -1,4 +1,6 @@
 if (CMAKE_BUILD_TYPE MATCHES "d1_mini")
     include_directories("${CMAKE_CURRENT_LIST_DIR}/.pio/libdeps/d1_mini/U8g2/src")
     include_directories("${CMAKE_CURRENT_LIST_DIR}/.pio/libdeps/d1_mini/LiquidCrystal_I2C")
+    include_directories("${CMAKE_CURRENT_LIST_DIR}/.pio/libdeps/d1_mini/DallasTemperature")
+    include_directories("${CMAKE_CURRENT_LIST_DIR}/.pio/libdeps/d1_mini/OneWire")
 endif()
