@@ -390,6 +390,7 @@ void displayInitialData() {
         displayEcoIntro();
         disableDisplay();
     } else {
+        lastDataUpdate = millis();
         displayData(getTemperature());
     }
 }
