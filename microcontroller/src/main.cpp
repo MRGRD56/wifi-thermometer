@@ -521,9 +521,11 @@ void loop() {
         }
     }
 
-    if (lastInsideTemperatureRequest < now - (isEcoMode ? 1500 : 750)) {
+    if (lastInsideTemperatureRequest <= now - 750) {
         lastInsideTemperature = getRequestedInsideTemperature();
-        requestInsideTemperature(now);
+        if (!isEcoMode || lastInsideTemperatureRequest <= now - 1500) {
+            requestInsideTemperature(now);
+        }
     }
 
     if (presenceSensor.getLastUpdate() < now - 7'000) {
