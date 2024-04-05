@@ -51,7 +51,7 @@ const String API_KEY = "a9b43ee71309";
 const char* COLLECTED_HEADERS[] = {"X-Api-Key"};
 const size_t COLLECTED_HEADERS_SIZE = sizeof(COLLECTED_HEADERS) / sizeof(char*);
 
-WebServer* server;
+WebServer server(80);
 
 #ifdef DISPLAY_OLED
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R2, U8X8_PIN_NONE, SCL, SDA);
@@ -296,16 +296,16 @@ TemperatureData getTemperature() {
 auto authorized(void (*handler)()) {
     return [handler]() {
         Serial.println("Headers:");
-        for (uint8_t i = 0; i < server->headers(); i++) {
-            Serial.println(server->headerName(i) + ": " + server->header(i));
+        for (uint8_t i = 0; i < server.headers(); i++) {
+            Serial.println(server.headerName(i) + ": " + server.header(i));
         }
 
-        String apiKey = server->header("X-Api-Key");
+        String apiKey = server.header("X-Api-Key");
 
         if (API_KEY != nullptr && API_KEY != apiKey) {
             Serial.println("GET /data: 403 Forbidden - invalid api key provided");
 
-            server->send(403, "text/plain", "Invalid api key provided");
+            server.send(403, "text/plain", "Invalid api key provided");
             return;
         }
 
@@ -323,7 +323,7 @@ void handleGetTemperature() {
              data.outside.humidity,
              data.inside.temperature);
 
-    server->send(200, "application/json", getTemperatureResponseBody);
+    server.send(200, "application/json", getTemperatureResponseBody);
 
     Serial.print("GET /temperature: 200 OK - ");
     Serial.println(getTemperatureResponseBody);
@@ -336,7 +336,7 @@ void handleGetEcoInternal() {
              R"({"isEco":%s})",
              isEcoMode ? "true" : "false");
 
-    server->send(200, "application/json", getEcoResponseBody);
+    server.send(200, "application/json", getEcoResponseBody);
 }
 
 void handleGetEco() {
@@ -347,13 +347,13 @@ void handleGetEco() {
 }
 
 void handlePostEco() {
-    String newValue = server->arg("isEco");
+    String newValue = server.arg("isEco");
     if (newValue == "true") {
         setEcoMode(true);
     } else if (newValue == "false") {
         setEcoMode(false);
     } else {
-        server->send(400, "text/plain", "isEco boolean parameter is required");
+        server.send(400, "text/plain", "isEco boolean parameter is required");
         return;
     }
 
@@ -376,22 +376,21 @@ void handleGetPresence() {
 
     delete isPresentCurrentlyPtr;
 
-    server->send(200, "application/json", getPresenceBody);
+    server.send(200, "application/json", getPresenceBody);
 
     Serial.print("GET /presence: 200 OK - ");
     Serial.println(getPresenceBody);
 }
 
 void initializeServer() {
-    server = new WebServer(80);
-    server->collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
+    server.collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
 
-    server->on("/temperature", HTTP_GET, authorized(handleGetTemperature));
-    server->on("/eco", HTTP_GET, authorized(handleGetEco));
-    server->on("/eco", HTTP_POST, authorized(handlePostEco));
-    server->on("/presence", HTTP_GET, authorized(handleGetPresence));
-    server->enableCORS(true);
-    server->begin();
+    server.on("/temperature", HTTP_GET, authorized(handleGetTemperature));
+    server.on("/eco", HTTP_GET, authorized(handleGetEco));
+    server.on("/eco", HTTP_POST, authorized(handlePostEco));
+    server.on("/presence", HTTP_GET, authorized(handleGetPresence));
+    server.enableCORS(true);
+    server.begin();
 }
 
 void displayInitialData() {
@@ -503,7 +502,7 @@ void loop() {
     }
 
     handleArduinoOta();
-    server->handleClient();
+    server.handleClient();
 
     unsigned long now = millis();
 
