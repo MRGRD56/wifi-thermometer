@@ -9,12 +9,16 @@
 #include "../lib/ota/Ota.h"
 #include "../lib/temperature/Temperature.h"
 #include "../lib/button/Button.h"
+#include "../lib/presence/PresenceSensor.h"
+
+#define PIN_BUTTON 18
+#define PIN_PRESENCE_SENSOR 27
+#define PIN_INSIDE_THERMOMETER 26
 
 #ifdef ESP8266
 #include "ESP8266WiFi.h"
 #include "ESP8266HTTPClient.h"
 #include "ESP8266WebServer.h"
-#include "../lib/presence/PresenceSensor.h"
 
 #else
 #include "WiFi.h"
@@ -37,6 +41,9 @@
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
+//#define LED_RECEIVE 0
+//#define LED_RECEIVE_ON 1
+
 const unsigned long PRESENCE_MIN_DURATION = (3 * 60 * 1000);
 
 const String API_KEY = "a9b43ee71309";
@@ -44,7 +51,7 @@ const String API_KEY = "a9b43ee71309";
 const char* COLLECTED_HEADERS[] = {"X-Api-Key"};
 const size_t COLLECTED_HEADERS_SIZE = sizeof(COLLECTED_HEADERS) / sizeof(char*);
 
-ESP8266WebServer server = ESP8266WebServer(80);
+WebServer* server;
 
 #ifdef DISPLAY_OLED
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R2, U8X8_PIN_NONE, SCL, SDA);
@@ -53,10 +60,10 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 #endif
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
-Button button = Button(D6);
-PresenceSensor presenceSensor = PresenceSensor(D5);
+Button button = Button(PIN_BUTTON);
+PresenceSensor presenceSensor = PresenceSensor(PIN_PRESENCE_SENSOR);
 
-OneWire insideThermometerWire = OneWire(D7);
+OneWire insideThermometerWire = OneWire(PIN_INSIDE_THERMOMETER);
 DallasTemperature insideThermometer = DallasTemperature(&insideThermometerWire);
 
 unsigned long lastDataUpdate = 0;
@@ -76,11 +83,11 @@ const byte debugPagesCount = 2;
 unsigned long lastDebugUpdate = 0;
 
 void setLedLight(boolean isEnabled) {
-    if (isEnabled) {
-        digitalWrite(LED_BUILTIN, LOW);
-    } else {
-        digitalWrite(LED_BUILTIN, HIGH);
-    }
+//    if (isEnabled) {
+//        digitalWrite(LED_BUILTIN, LOW);
+//    } else {
+//        digitalWrite(LED_BUILTIN, HIGH);
+//    }
 }
 
 void initDisplay() {
@@ -218,6 +225,7 @@ bool isWifiConnected() {
 void connectToWifi() {
     setLedLight(true);
 
+    WiFi.mode(WIFI_MODE_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Connecting to ");
     Serial.print(WIFI_SSID);
@@ -288,16 +296,16 @@ TemperatureData getTemperature() {
 auto authorized(void (*handler)()) {
     return [handler]() {
         Serial.println("Headers:");
-        for (uint8_t i = 0; i < server.headers(); i++) {
-            Serial.println(server.headerName(i) + ": " + server.header(i));
+        for (uint8_t i = 0; i < server->headers(); i++) {
+            Serial.println(server->headerName(i) + ": " + server->header(i));
         }
 
-        String apiKey = server.header("X-Api-Key");
+        String apiKey = server->header("X-Api-Key");
 
         if (API_KEY != nullptr && API_KEY != apiKey) {
             Serial.println("GET /data: 403 Forbidden - invalid api key provided");
 
-            server.send(403, "text/plain", "Invalid api key provided");
+            server->send(403, "text/plain", "Invalid api key provided");
             return;
         }
 
@@ -315,7 +323,7 @@ void handleGetTemperature() {
              data.outside.humidity,
              data.inside.temperature);
 
-    server.send(200, "application/json", getTemperatureResponseBody);
+    server->send(200, "application/json", getTemperatureResponseBody);
 
     Serial.print("GET /temperature: 200 OK - ");
     Serial.println(getTemperatureResponseBody);
@@ -328,7 +336,7 @@ void handleGetEcoInternal() {
              R"({"isEco":%s})",
              isEcoMode ? "true" : "false");
 
-    server.send(200, "application/json", getEcoResponseBody);
+    server->send(200, "application/json", getEcoResponseBody);
 }
 
 void handleGetEco() {
@@ -339,13 +347,13 @@ void handleGetEco() {
 }
 
 void handlePostEco() {
-    String newValue = server.arg("isEco");
+    String newValue = server->arg("isEco");
     if (newValue == "true") {
         setEcoMode(true);
     } else if (newValue == "false") {
         setEcoMode(false);
     } else {
-        server.send(400, "text/plain", "isEco boolean parameter is required");
+        server->send(400, "text/plain", "isEco boolean parameter is required");
         return;
     }
 
@@ -368,21 +376,22 @@ void handleGetPresence() {
 
     delete isPresentCurrentlyPtr;
 
-    server.send(200, "application/json", getPresenceBody);
+    server->send(200, "application/json", getPresenceBody);
 
     Serial.print("GET /presence: 200 OK - ");
     Serial.println(getPresenceBody);
 }
 
 void initializeServer() {
-    server.collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
+    server = new WebServer(80);
+    server->collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
 
-    server.on("/temperature", HTTP_GET, authorized(handleGetTemperature));
-    server.on("/eco", HTTP_GET, authorized(handleGetEco));
-    server.on("/eco", HTTP_POST, authorized(handlePostEco));
-    server.on("/presence", HTTP_GET, authorized(handleGetPresence));
-    server.enableCORS(true);
-    server.begin();
+    server->on("/temperature", HTTP_GET, authorized(handleGetTemperature));
+    server->on("/eco", HTTP_GET, authorized(handleGetEco));
+    server->on("/eco", HTTP_POST, authorized(handlePostEco));
+    server->on("/presence", HTTP_GET, authorized(handleGetPresence));
+    server->enableCORS(true);
+    server->begin();
 }
 
 void displayInitialData() {
@@ -419,19 +428,17 @@ void displayDebugPage() {
 }
 
 void setup() {
-    initializeArduinoOta();
+    Serial.begin(9600);
 
     EEPROM.begin(EEPROM_SIZE);
     isEcoMode = EEPROM.read(EEPROM_ADDR_IS_DATA_SHOWN);
 
     initDisplay();
 
-    pinMode(LED_BUILTIN, OUTPUT);
+//    pinMode(LED_BUILTIN, OUTPUT);
 
     presenceSensor.initialize();
     presenceSensor.setPresent(true);
-
-    Serial.begin(9600);
 
     insideThermometer.begin();
 
@@ -441,10 +448,12 @@ void setup() {
         Serial.println("Check circuit. HTU21D not found!");
         displayText("HTU21D not found!");
         delay(1000);
-        EspClass::restart();
+        ESP.restart();
     }
 
     connectToWifi();
+
+    initializeArduinoOta();
 
     initializeServer();
 
@@ -494,7 +503,7 @@ void loop() {
     }
 
     handleArduinoOta();
-    server.handleClient();
+    server->handleClient();
 
     unsigned long now = millis();
 
