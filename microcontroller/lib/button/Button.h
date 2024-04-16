@@ -5,6 +5,10 @@
 
 #include <Arduino.h>
 
+#define STATE_PRESSED HIGH
+#define STATE_UNPRESSED LOW
+// vise versa for INPUT_PULLUP
+
 struct Button {
 public:
     const byte pin;
@@ -12,7 +16,7 @@ public:
     explicit Button(byte pin) : pin(pin) {}
 
     void initialize() const {
-        pinMode(pin, INPUT_PULLUP);
+        pinMode(pin, INPUT);
     }
 
     bool isPressed(unsigned long& millisPressed, unsigned long maxPressTime = -1) {
@@ -22,12 +26,12 @@ public:
 
         unsigned long now = millis();
 
-        if (previousState == HIGH && state == LOW) { // just pressed
+        if (previousState == STATE_UNPRESSED && state == STATE_PRESSED) { // just pressed
             pressStart = now;
             return false;
         }
 
-        if (previousState == LOW && state == HIGH) { // just released
+        if (previousState == STATE_PRESSED && state == STATE_UNPRESSED) { // just released
             if (isAlreadyPressed) {
                 isAlreadyPressed = false;
                 return false;
@@ -37,7 +41,7 @@ public:
             return true;
         }
 
-        if (state == LOW && maxPressTime != -1 && !isAlreadyPressed) {
+        if (state == STATE_PRESSED && maxPressTime != -1 && !isAlreadyPressed) {
             unsigned long currentMillisPressed = now - pressStart;
             if (currentMillisPressed >= maxPressTime) {
                 isAlreadyPressed = true;
@@ -50,9 +54,9 @@ public:
     }
 
 private:
-    byte state = HIGH;
-    byte previousState = HIGH;
-    byte lastState = HIGH;
+    byte state = STATE_UNPRESSED;
+    byte previousState = STATE_UNPRESSED;
+    byte lastState = STATE_UNPRESSED;
     unsigned long pressStart = 0;
     bool isAlreadyPressed = false;
 };

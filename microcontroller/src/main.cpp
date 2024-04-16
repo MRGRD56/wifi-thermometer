@@ -6,6 +6,7 @@
 #include "DallasTemperature.h"
 
 #include "../lib/Credentials.h"
+#include "../lib/WiFiCredentials.h"
 #include "../lib/ota/Ota.h"
 #include "../lib/temperature/Temperature.h"
 #include "../lib/button/Button.h"
@@ -313,6 +314,15 @@ auto authorized(void (*handler)()) {
     };
 }
 
+//void handleGetIndex() {
+//    if (!server.authenticate("user", "password")) {
+//        server.requestAuthentication(BASIC_AUTH);
+//        return;
+//    }
+//
+//    server.send(200, );
+//}
+
 char getTemperatureResponseBody[128];
 void handleGetTemperature() {
     TemperatureData data = getTemperature();
@@ -385,6 +395,7 @@ void handleGetPresence() {
 void initializeServer() {
     server.collectHeaders(COLLECTED_HEADERS, COLLECTED_HEADERS_SIZE);
 
+//    server.on("/", HTTP_GET, handleGetIndex);
     server.on("/temperature", HTTP_GET, authorized(handleGetTemperature));
     server.on("/eco", HTTP_GET, authorized(handleGetEco));
     server.on("/eco", HTTP_POST, authorized(handlePostEco));
