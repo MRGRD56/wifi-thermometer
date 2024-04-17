@@ -11,6 +11,8 @@ struct TemperaturePlace {
     float temperature;
     float humidity;
 
+    TemperaturePlace() {}
+
     TemperaturePlace(float temperature, float humidity)
         : temperature(temperature),
           humidity(humidity) {}
@@ -19,6 +21,8 @@ struct TemperaturePlace {
 struct TemperatureData {
     TemperaturePlace outside;
     TemperaturePlace inside;
+
+    TemperatureData() {}
 
     TemperatureData(const TemperaturePlace &outside, const TemperaturePlace &inside)
         : outside(outside),

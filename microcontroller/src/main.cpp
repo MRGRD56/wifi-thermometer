@@ -1,9 +1,10 @@
 #include <Arduino.h>
-#include <Wire.h>
 #include "Adafruit_HTU21DF.h"
-#include <EEPROM.h>
+#include "Wire.h"
+#include "I2C_eeprom.h"
 #include "OneWire.h"
 #include "DallasTemperature.h"
+#include <ArduinoHA.h>
 
 #include "../lib/Credentials.h"
 #include "../lib/WiFiCredentials.h"
@@ -42,6 +43,8 @@
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
+#define BROKER_ADDR     IPAddress(192, 168, 0, 19)
+
 //#define LED_RECEIVE 0
 //#define LED_RECEIVE_ON 1
 
@@ -52,7 +55,20 @@ const String API_KEY = "a9b43ee71309";
 const char* COLLECTED_HEADERS[] = {"X-Api-Key"};
 const size_t COLLECTED_HEADERS_SIZE = sizeof(COLLECTED_HEADERS) / sizeof(char*);
 
+byte mac[] = {0x90, 0xDA, 0x9B, 0x1B, 0x5E, 0xAE};
+
+WiFiClient client;
+HADevice device(mac, sizeof(mac));
+HAMqtt mqtt(client, device);
+
+HASensorNumber haOutsideTemperatureSensor("outside_temperature", HASensorNumber::PrecisionP2);
+HASensorNumber haOutsideHumiditySensor("outside_humidity", HASensorNumber::PrecisionP1);
+HASensorNumber haInsideTemperatureSensor("inside_temperature", HASensorNumber::PrecisionP2);
+HASwitch haDisplaySwitch("esp_thermometer_display_switch");
+
 WebServer server(80);
+
+I2C_eeprom eeprom(0x50, I2C_DEVICESIZE_24LC256);
 
 #ifdef DISPLAY_OLED
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R2, U8X8_PIN_NONE, SCL, SDA);
@@ -208,9 +224,9 @@ void displayEcoIntro() {
 
 void setEcoMode(bool newEcoMode) {
     isEcoMode = newEcoMode;
-        
-    EEPROM.write(EEPROM_ADDR_IS_DATA_SHOWN, isEcoMode);
-    EEPROM.commit();
+
+    haDisplaySwitch.setState(!newEcoMode);
+    eeprom.updateByte(EEPROM_ADDR_IS_DATA_SHOWN, isEcoMode);
 
     if (isEcoMode) {
         disableDisplay();
@@ -437,11 +453,44 @@ void displayDebugPage() {
     }
 }
 
+void initializeHomeAssistant() {
+    device.setName("ESP Thermometer");
+    device.setSoftwareVersion("1.0.0");
+
+    haInsideTemperatureSensor.setIcon("mdi:home-thermometer");
+    haInsideTemperatureSensor.setName("Inside Temperature");
+    haInsideTemperatureSensor.setUnitOfMeasurement("°C");
+
+    haOutsideTemperatureSensor.setIcon("mdi:sun-thermometer");
+    haOutsideTemperatureSensor.setName("Outside Temperature");
+    haOutsideTemperatureSensor.setUnitOfMeasurement("°C");
+
+    haOutsideHumiditySensor.setIcon("mdi:cloud-percent");
+    haOutsideHumiditySensor.setName("Outside Humidity");
+    haOutsideHumiditySensor.setUnitOfMeasurement("%");
+
+    haDisplaySwitch.setIcon("mdi:white-balance-sunny");
+    haDisplaySwitch.setName("Display");
+    haDisplaySwitch.setState(!isEcoMode);
+    haDisplaySwitch.onCommand([](bool isDisplayOn, HASwitch* haSwitch) {
+        setEcoMode(!isDisplayOn);
+    });
+
+    mqtt.begin(BROKER_ADDR);
+}
+
 void setup() {
     Serial.begin(9600);
 
-    EEPROM.begin(EEPROM_SIZE);
-    isEcoMode = EEPROM.read(EEPROM_ADDR_IS_DATA_SHOWN);
+    Wire.begin();
+
+    if (!eeprom.begin()) {
+        Serial.println("Check circuit. EEPROM not found!");
+        displayText("EEPROM not found!");
+        delay(1000);
+        ESP.restart();
+    }
+    isEcoMode = eeprom.readByte(EEPROM_ADDR_IS_DATA_SHOWN);
 
     initDisplay();
 
@@ -465,6 +514,8 @@ void setup() {
 
     initializeArduinoOta();
 
+    initializeHomeAssistant();
+
     initializeServer();
 
     requestInsideTemperature();
@@ -472,7 +523,7 @@ void setup() {
     displayInitialData();
     insideThermometer.setWaitForConversion(false);
 
-    Serial.println("Initialized");
+    Serial.println("Initialized.");
     setLedLight(false);
 }
 
@@ -514,8 +565,21 @@ void loop() {
 
     handleArduinoOta();
     server.handleClient();
+    mqtt.loop();
 
     unsigned long now = millis();
+
+    bool isDataUpdate = lastDataUpdate < now - 3000;
+    TemperatureData temperatureData;
+    if (isDataUpdate) {
+        temperatureData = getTemperature();
+
+        haInsideTemperatureSensor.setValue(temperatureData.inside.temperature);
+        haOutsideTemperatureSensor.setValue(temperatureData.outside.temperature);
+        haOutsideHumiditySensor.setValue(temperatureData.outside.humidity);
+
+        lastDataUpdate = now;
+    }
 
     if (isDebugMode) {
         if (lastDebugUpdate < now - dataUpdateDelay) {
@@ -525,15 +589,13 @@ void loop() {
         }
     } else {
         if (!isEcoMode) {
-            if (lastDataUpdate < now - (lastPresent ? 3000 : 500)) {
-                lastDataUpdate = now;
-
+            if (isDataUpdate) {
                 bool previousPresent = lastPresent;
                 bool isPresent = presenceSensor.isPresentLong(PRESENCE_MIN_DURATION);
                 lastPresent = isPresent;
 
                 if (isPresent) {
-                    displayData(getTemperature());
+                    displayData(temperatureData);
                 } else if (previousPresent) {
                     disableDisplay();
                 }
