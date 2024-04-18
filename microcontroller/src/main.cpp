@@ -43,7 +43,7 @@
 #define EEPROM_SIZE 1
 #define EEPROM_ADDR_IS_DATA_SHOWN 0
 
-#define BROKER_ADDR     IPAddress(192, 168, 0, 19)
+#define BROKER_ADDR     IPAddress(192, 168, 0, 100)
 
 //#define LED_RECEIVE 0
 //#define LED_RECEIVE_ON 1
