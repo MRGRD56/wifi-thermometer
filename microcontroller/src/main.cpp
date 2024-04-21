@@ -99,6 +99,28 @@ byte debugPageIndex = 0;
 const byte debugPagesCount = 2;
 unsigned long lastDebugUpdate = 0;
 
+unsigned long buttonPressMillis = 0;
+
+void createTask(const char* name, void (*taskFunc)(), uint16_t stackSize = 2048, UBaseType_t priority = 1) {
+    xTaskCreate(
+            [](void* parameter) {
+                // Вызов переданной функции
+                ((void (*)())parameter)();
+                // Удаление задачи после завершения выполнения функции
+                vTaskDelete(NULL);
+            },
+            name,
+            stackSize,
+            (void*)taskFunc,
+            priority,
+            nullptr
+    );
+}
+
+void createTask(void (*taskFunc)(), uint16_t stackSize = 2048, UBaseType_t priority = 1) {
+    createTask(nullptr, taskFunc, stackSize, priority);
+}
+
 void setLedLight(boolean isEnabled) {
 //    if (isEnabled) {
 //        digitalWrite(LED_BUILTIN, LOW);
@@ -219,7 +241,7 @@ void displayText(const char *format, ...) {
 
 void displayEcoIntro() {
     displayText("ECO mode");
-    delay(500);
+    vTaskDelay(pdMS_TO_TICKS(500));
 }
 
 void setEcoMode(bool newEcoMode) {
@@ -422,8 +444,10 @@ void initializeServer() {
 
 void displayInitialData() {
     if (isEcoMode) {
-        displayEcoIntro();
-        disableDisplay();
+        createTask([]() {
+            displayEcoIntro();
+            disableDisplay();
+        });
     } else {
         lastDataUpdate = millis();
         displayData(getTemperature());
@@ -471,12 +495,15 @@ void initializeHomeAssistant() {
 
     haDisplaySwitch.setIcon("mdi:white-balance-sunny");
     haDisplaySwitch.setName("Display");
-    haDisplaySwitch.setState(!isEcoMode);
     haDisplaySwitch.onCommand([](bool isDisplayOn, HASwitch* haSwitch) {
         setEcoMode(!isDisplayOn);
     });
 
     mqtt.begin(BROKER_ADDR);
+
+    mqtt.loop();
+
+    haDisplaySwitch.setState(!isEcoMode);
 }
 
 void setup() {
@@ -525,47 +552,87 @@ void setup() {
 
     Serial.println("Initialized.");
     setLedLight(false);
+
+    createTask("handleButton", []() {
+        while (true) {
+            button.isPressed(buttonPressMillis, 1500);
+            vTaskDelay(1);
+        }
+    });
+
+    createTask("handleArduinoOta", []() {
+        while (true) {
+            handleArduinoOta();
+            vTaskDelay(pdMS_TO_TICKS(350));
+        }
+    });
+
+    createTask("handleServerClient", []() {
+        while (true) {
+            server.handleClient();
+            vTaskDelay(1);
+        }
+    });
+
+    createTask("mqttLoop", []() {
+        while (true) {
+            mqtt.loop();
+            vTaskDelay(1);
+        }
+    });
+
+    createTask("wifiReconnect", []() {
+        while (true) {
+            // if Wi-Fi is down, try reconnecting
+            if (!isWifiConnected()) {
+                Serial.print(millis());
+                Serial.println("Reconnecting to WiFi...");
+                WiFi.disconnect();
+                WiFi.reconnect();
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(30'000));
+        }
+    });
 }
 
 void loop() {
-    unsigned long buttonPressMillis;
-    if (button.isPressed(buttonPressMillis, 1500)) {
+    if (buttonPressMillis) {
+        ulong pressMillis = buttonPressMillis;
+        buttonPressMillis = 0;
+
         presenceSensor.setPresent(true);
 
-        if (!isEcoMode && buttonPressMillis >= 1500) {
+        if (!isEcoMode && pressMillis >= 1500) {
             isDebugMode = !isDebugMode;
 
             if (isDebugMode) {
                 displayText("Debug ON");
-                delay(500);
+                vTaskDelay(pdMS_TO_TICKS(500));
                 setDebugPage(0);
             } else {
                 displayText("Debug OFF");
-                delay(500);
+                vTaskDelay(pdMS_TO_TICKS(500));
                 lastDataUpdate = 0;
             }
-        } else if (buttonPressMillis >= 25) {
+        } else if (pressMillis >= 25) {
             if (isDebugMode) {
                 setDebugPage(debugPageIndex + 1);
             } else {
                 if (isEcoMode || lastPresent) {
                     bool newEcoMode = !isEcoMode;
 
+                    setEcoMode(newEcoMode);
                     if (newEcoMode) {
                         displayEcoIntro();
+                        disableDisplay();
                     }
-
-                    setEcoMode(newEcoMode);
                 } else {
                     lastDataUpdate = 0;
                 }
             }
         }
     }
-
-    handleArduinoOta();
-    server.handleClient();
-    mqtt.loop();
 
     unsigned long now = millis();
 
