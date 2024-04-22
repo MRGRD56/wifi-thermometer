@@ -509,6 +509,8 @@ void initializeHomeAssistant() {
 void setup() {
     Serial.begin(9600);
 
+    initDisplay();
+
     Wire.begin();
 
     if (!eeprom.begin()) {
@@ -518,8 +520,6 @@ void setup() {
         ESP.restart();
     }
     isEcoMode = eeprom.readByte(EEPROM_ADDR_IS_DATA_SHOWN);
-
-    initDisplay();
 
 //    pinMode(LED_BUILTIN, OUTPUT);
 
