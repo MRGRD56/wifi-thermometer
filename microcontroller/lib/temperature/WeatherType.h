@@ -1,0 +1,19 @@
+//
+// Created by SU on 23.04.2024.
+//
+
+#ifndef MICROCONTROLLER_WEATHERTYPE_H
+#define MICROCONTROLLER_WEATHERTYPE_H
+
+enum WeatherType {
+    THUNDERSTORM,
+    DRIZZLE,
+    RAIN,
+    SNOW,
+    ATMOSPHERE,
+    CLEAR,
+    FEW_CLOUDS,
+    CLOUDS
+};
+
+#endif //MICROCONTROLLER_WEATHERTYPE_H

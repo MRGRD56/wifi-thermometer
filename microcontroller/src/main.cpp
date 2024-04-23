@@ -2,20 +2,21 @@
 #include "Adafruit_HTU21DF.h"
 #include "Wire.h"
 #include "I2C_eeprom.h"
-#include "OneWire.h"
-#include "DallasTemperature.h"
+//#include "OneWire.h"
 #include <ArduinoHA.h>
 
 #include "../lib/Credentials.h"
-#include "../lib/WiFiCredentials.h"
+//#include "../lib/config/Config.h"
+//#include "../lib/config/WiFiCredentials.h"
 #include "../lib/ota/Ota.h"
-#include "../lib/temperature/Temperature.h"
+#include "Weather.h"
 #include "../lib/button/Button.h"
 #include "../lib/presence/PresenceSensor.h"
+#include "../lib/weather/OnlineWeather.h"
+
 
 #define PIN_BUTTON 18
 #define PIN_PRESENCE_SENSOR 27
-#define PIN_INSIDE_THERMOMETER 26
 
 #ifdef ESP8266
 #include "ESP8266WiFi.h"
@@ -62,8 +63,9 @@ HADevice device(mac, sizeof(mac));
 HAMqtt mqtt(client, device);
 
 HASensorNumber haOutsideTemperatureSensor("outside_temperature", HASensorNumber::PrecisionP2);
-HASensorNumber haOutsideHumiditySensor("outside_humidity", HASensorNumber::PrecisionP1);
+HASensorNumber haOutsideHumiditySensor("outside_humidity", HASensorNumber::PrecisionP2);
 HASensorNumber haInsideTemperatureSensor("inside_temperature", HASensorNumber::PrecisionP2);
+HASensorNumber haInsideHumiditySensor("inside_humidity", HASensorNumber::PrecisionP2);
 HASwitch haDisplaySwitch("esp_thermometer_display_switch");
 
 WebServer server(80);
@@ -77,18 +79,15 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2 = U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U
 LiquidCrystal_I2C lcd = LiquidCrystal_I2C(0x27, 16, 2);
 #endif
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
-Button button = Button(PIN_BUTTON);
-PresenceSensor presenceSensor = PresenceSensor(PIN_PRESENCE_SENSOR);
+OnlineWeather onlineWeather(WEATHER_API_KEY);
+Button button(PIN_BUTTON);
+PresenceSensor presenceSensor(PIN_PRESENCE_SENSOR);
 
-OneWire insideThermometerWire = OneWire(PIN_INSIDE_THERMOMETER);
-DallasTemperature insideThermometer = DallasTemperature(&insideThermometerWire);
+unsigned long lastOnlineWeatherUpdate = 0;
 
 unsigned long lastDataUpdate = 0;
 unsigned long dataUpdateDelay;
 bool lastPresent = true;
-
-unsigned long lastInsideTemperatureRequest = 0;
-float lastInsideTemperature = -1;
 
 bool isEcoMode;
 
@@ -121,14 +120,6 @@ void createTask(void (*taskFunc)(), uint16_t stackSize = 2048, UBaseType_t prior
     createTask(nullptr, taskFunc, stackSize, priority);
 }
 
-void setLedLight(boolean isEnabled) {
-//    if (isEnabled) {
-//        digitalWrite(LED_BUILTIN, LOW);
-//    } else {
-//        digitalWrite(LED_BUILTIN, HIGH);
-//    }
-}
-
 void initDisplay() {
     isScreenEnabled = true;
 
@@ -142,7 +133,12 @@ void initDisplay() {
 
     lcd.createChar(LCD_CHAR_CELSIUS_DEGREES, LCD_CHAR_CELSIUS_DEGREES_BYTES);
     lcd.createChar(LCD_CHAR_INSIDE, LCD_CHAR_INSIDE_BYTES);
-    lcd.createChar(LCD_CHAR_OUTSIDE, LCD_CHAR_OUTSIDE_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_CLEAR, LCD_CHAR_OUTSIDE_CLEAR_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_FEW_CLOUDS, LCD_CHAR_OUTSIDE_FEW_CLOUDS_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_CLOUDY, LCD_CHAR_OUTSIDE_CLOUDY_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_PRECIPITATION, LCD_CHAR_OUTSIDE_PRECIPITATION_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_THUNDERSTORM, LCD_CHAR_OUTSIDE_THUNDERSTORM_BYTES);
+    lcd.createChar(LCD_CHAR_OUTSIDE_MIST, LCD_CHAR_OUTSIDE_MIST_BYTES);
 #endif
 }
 
@@ -163,7 +159,28 @@ void disableDisplay() {
     isScreenEnabled = false;
 }
 
-void displayData(TemperatureData data) {
+byte convertOutsideCharacter(WeatherType weatherType) {
+    switch (weatherType) {
+        case THUNDERSTORM:
+            return LCD_CHAR_OUTSIDE_THUNDERSTORM;
+        case RAIN:
+        case DRIZZLE:
+        case SNOW:
+            return LCD_CHAR_OUTSIDE_PRECIPITATION;
+        case ATMOSPHERE:
+            return LCD_CHAR_OUTSIDE_MIST;
+        case CLEAR:
+            return LCD_CHAR_OUTSIDE_CLEAR;
+        case FEW_CLOUDS:
+            return LCD_CHAR_OUTSIDE_FEW_CLOUDS;
+        case CLOUDS:
+            return LCD_CHAR_OUTSIDE_CLOUDY;
+        default:
+            return LCD_CHAR_OUTSIDE_CLEAR;
+    }
+}
+
+void displayWeather(Weather data) {
     if (isEcoMode) {
         disableDisplay();
         return;
@@ -191,7 +208,7 @@ void displayData(TemperatureData data) {
     lcd.clear();
 
     lcd.setCursor(0, 0);
-    lcd.write(LCD_CHAR_OUTSIDE);
+    lcd.write(convertOutsideCharacter(data.outside.weatherType));
     lcd.printf(" %.2f", data.outside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
     lcd.printf(" %.1f%%", data.outside.humidity);
@@ -200,6 +217,7 @@ void displayData(TemperatureData data) {
     lcd.write(LCD_CHAR_INSIDE);
     lcd.printf(" %.2f", data.inside.temperature);
     lcd.write(LCD_CHAR_CELSIUS_DEGREES);
+    lcd.printf(" %.1f%%", data.inside.humidity);
 #endif
 
     isScreenEnabled = true;
@@ -262,8 +280,6 @@ bool isWifiConnected() {
 }
 
 void connectToWifi() {
-    setLedLight(true);
-
     WiFi.mode(WIFI_MODE_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Connecting to ");
@@ -302,32 +318,20 @@ void connectToWifi() {
     Serial.println(WiFi.localIP());
 
     displayText("Connected");
-
-    setLedLight(false);
 }
 
-void requestInsideTemperature(unsigned long now = millis()) {
-    lastInsideTemperatureRequest = now;
-    insideThermometer.requestTemperatures();
-}
-
-float getRequestedInsideTemperature() {
-    return insideThermometer.getTempCByIndex(0);
-}
-
-TemperatureData getTemperature() {
-    float outsideTemperature = htu.readTemperature();
-    float outsideHumidity = htu.readHumidity();
-    float insideTemperature = lastInsideTemperature;
+Weather getTemperature() {
+    if (millis() - lastOnlineWeatherUpdate > 60'000) {
+        if (onlineWeather.fetchWeather(LOCATION_LATITUDE, LOCATION_LONGITUDE)) {
+            lastOnlineWeatherUpdate = millis();
+        }
+    }
 
     return {
+        onlineWeather.getWeather(),
         {
-            outsideTemperature,
-            outsideHumidity
-        },
-        {
-            insideTemperature,
-            -1
+            htu.readTemperature(),
+            htu.readHumidity()
         }
     };
 }
@@ -363,7 +367,7 @@ auto authorized(void (*handler)()) {
 
 char getTemperatureResponseBody[128];
 void handleGetTemperature() {
-    TemperatureData data = getTemperature();
+    Weather data = getTemperature();
 
     snprintf(getTemperatureResponseBody, sizeof(getTemperatureResponseBody),
              R"({"outside":{"temperature":%.2f,"humidity":%.2f},"inside":{"temperature":%.2f}})",
@@ -450,7 +454,10 @@ void displayInitialData() {
         });
     } else {
         lastDataUpdate = millis();
-        displayData(getTemperature());
+        if (onlineWeather.fetchWeather(LOCATION_LATITUDE, LOCATION_LONGITUDE)) {
+            lastOnlineWeatherUpdate = millis();
+        }
+        displayWeather(getTemperature());
     }
 }
 
@@ -484,6 +491,10 @@ void initializeHomeAssistant() {
     haInsideTemperatureSensor.setIcon("mdi:home-thermometer");
     haInsideTemperatureSensor.setName("Inside Temperature");
     haInsideTemperatureSensor.setUnitOfMeasurement("°C");
+
+    haInsideHumiditySensor.setIcon("mdi:water-percent");
+    haInsideHumiditySensor.setName("Inside Humidity");
+    haInsideHumiditySensor.setUnitOfMeasurement("%");
 
     haOutsideTemperatureSensor.setIcon("mdi:sun-thermometer");
     haOutsideTemperatureSensor.setName("Outside Temperature");
@@ -526,8 +537,6 @@ void setup() {
     presenceSensor.initialize();
     presenceSensor.setPresent(true);
 
-    insideThermometer.begin();
-
     button.initialize();
 
     if (!htu.begin()) {
@@ -545,43 +554,39 @@ void setup() {
 
     initializeServer();
 
-    requestInsideTemperature();
-    lastInsideTemperature = getRequestedInsideTemperature();
     displayInitialData();
-    insideThermometer.setWaitForConversion(false);
 
     Serial.println("Initialized.");
-    setLedLight(false);
 
-    createTask("handleButton", []() {
+    createTask([]() {
         while (true) {
             button.isPressed(buttonPressMillis, 1500);
             vTaskDelay(1);
         }
     });
 
-    createTask("handleArduinoOta", []() {
+    createTask([]() {
         while (true) {
             handleArduinoOta();
             vTaskDelay(pdMS_TO_TICKS(350));
         }
     });
 
-    createTask("handleServerClient", []() {
+    createTask([]() {
         while (true) {
             server.handleClient();
             vTaskDelay(1);
         }
     });
 
-    createTask("mqttLoop", []() {
+    createTask([]() {
         while (true) {
             mqtt.loop();
             vTaskDelay(1);
         }
     });
 
-    createTask("wifiReconnect", []() {
+    createTask([]() {
         while (true) {
             // if Wi-Fi is down, try reconnecting
             if (!isWifiConnected()) {
@@ -637,11 +642,12 @@ void loop() {
     unsigned long now = millis();
 
     bool isDataUpdate = lastDataUpdate < now - 3000;
-    TemperatureData temperatureData;
+    Weather temperatureData;
     if (isDataUpdate) {
         temperatureData = getTemperature();
 
         haInsideTemperatureSensor.setValue(temperatureData.inside.temperature);
+        haInsideHumiditySensor.setValue(temperatureData.inside.humidity);
         haOutsideTemperatureSensor.setValue(temperatureData.outside.temperature);
         haOutsideHumiditySensor.setValue(temperatureData.outside.humidity);
 
@@ -662,18 +668,11 @@ void loop() {
                 lastPresent = isPresent;
 
                 if (isPresent) {
-                    displayData(temperatureData);
+                    displayWeather(temperatureData);
                 } else if (previousPresent) {
                     disableDisplay();
                 }
             }
-        }
-    }
-
-    if (lastInsideTemperatureRequest <= now - 750) {
-        lastInsideTemperature = getRequestedInsideTemperature();
-        if (!isEcoMode || lastInsideTemperatureRequest <= now - 1500) {
-            requestInsideTemperature(now);
         }
     }
 
